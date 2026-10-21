@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "b78c7807df7cf4231d4e67f8d0ece29c5e11025b",
+  "motionSourceCommit": "ac236251f90e5ca37c444c53ad383fc85de6d833",
+  "encoderRevision": "7bcac572ce56db69c1ea7c8af255c5d7c9672fc2",
+  "model": {
+    "id": "candidate-v3",
+    "repo": "Linzhan/UniMate",
+    "revision": "174fc755ec248d0c98f27759b7a95648e7f05905",
+    "checkpoint": {
+      "path": "unimate_uniml3d_f60_v3/checkpoints/checkpoint_step_150000.pt",
+      "sizeBytes": 1185836040,
+      "sha256": "f991ddd87262c251f4681d18297a6163ab4f139daa28c86d5ef0a66771df7bc6"
+    },
+    "config": {
+      "path": "unimate_uniml3d_f60_v3/config.json",
+      "sha256": "1ffbd379d3667de7d701ed6f3418f1c9d1a66f35d2653776255008c07c051aaa",
+      "sizeBytes": 3530
+    },
+    "stats": {
+      "path": "unimate_uniml3d_f60_v3/dataset_stats.npy",
+      "sha256": "0ff2b9ef3ea9a15b024ab0670e55f659478251501e5596f9011d5bca4cf67773",
+      "sizeBytes": 950
+    },
+    "resolveBase": "https://huggingface.co/Linzhan/UniMate/resolve/174fc755ec248d0c98f27759b7a95648e7f05905/"
+  }
+}
