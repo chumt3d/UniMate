@@ -28,6 +28,23 @@ def analyze(stage: str, image_id: str):
         manifests = sorted(Path("/evaluation/unimate-20261021-escalation-b/samples").glob(f"*/*/{seed}/manifest.json"))
         if len(manifests) != 4:
             raise ValueError("Comparison has not finished all four model/rig pairs")
+    elif stage == "solver-tiger-euler200":
+        root = Path("/evaluation/unimate-20261021-escalation-d/tiger-euler200")
+        if json.loads((root / "receipt.json").read_text())["status"] != "passed":
+            raise ValueError("Solver experiment has not finished")
+        manifests = [root / "motion_expand/manifest.json"]
+    elif stage.startswith("expand-"):
+        case, seed = stage.removeprefix("expand-").rsplit("-", 1)
+        cases = {"tiger", "artist-v3-walk", "artist-v3-trot", "artist-truebones-walk",
+                 "artist-truebones-trot", "native-truebones-walk"}
+        if case not in cases or seed not in {"0", "1729", "2718", "31415"} or (case == "tiger") != (seed == "0"):
+            raise ValueError("Outside the declared expansion cases")
+        root = Path("/evaluation/unimate-20261021-escalation-c") / case / seed
+        if json.loads((root / "receipt.json").read_text())["status"] != "passed":
+            raise ValueError("Expansion has not passed its generation checks")
+        manifests = [root / "motion_expand/manifest.json"]
+        if not manifests[0].is_file():
+            raise FileNotFoundError(manifests[0])
     else:
         raise ValueError("Unknown bounded analysis stage")
     output = Path("/evaluation/unimate-20261021-escalation-analysis") / stage

@@ -61,3 +61,23 @@ experiment/source/resource contracts; escalation owner integrates findings.
 Diagnostic length L is canonical rest-root-to-lowest-joint height, not the
 rubric's per-leg length. Joint heuristics and spectral peaks remain telemetry;
 they do not determine contact phase, gait pass/fail, or original-skin quality.
+
+C first screen generated410finiteframes for all six declared cases. Tiger
+first60features matched authorrep0 within3.40e-6; full chain took46.94sL40S.
+Raw Tiger append boundaries show per-joint acceleration/interior-p99 ratios
+7.50..17.39; artistv3walk2.57..8.65; artistTrueboneswalk9.31..17.94.
+These are FK joint telemetry at canonical length, not the skin/leg AT2 verdict.
+Same seed integers across model widths71/86 do not establish paired latent noise.
+
+D hypothesis: is continuation Euler50 discretization responsible for seams?
+Change only the existing inbetween sampler's num_steps to200, Tiger seed0,
+two windows110frames. Keep every other behavior and initial free window.
+Runtime override is explicitly research-only. Generation passed59.24sA10;
+first60 versus C maxabs1.46e-6; continuation feature RMS difference.00315.
+Paired FK seam comparison remains required before interpreting this difference.
+
+Original-skin consumer closure from IMPL binds exact GLB7610eda5 and
+geometryed5ed33e, sourcecf183, decoderb78. The diagnostic-only exact-asset guard
+replaces broad generic Studio authoring admission; no arbitrary-asset or product
+admission follows. Exposed procedural known-plant control uses diagnostic
+unrestricted bend limits and is not a naturalness/professional-limit baseline.
