@@ -28,3 +28,21 @@ Next questions (experiments declared after baseline, before their output):
 
 Prior dynamic stance detector was rejected. Its gait/duty/phase outputs are
 telemetry, not F1-F3 acceptance. Report raw and corrected motion separately.
+
+Checkpoint A result: CPU preparation17.82s; GPU generation/render106.32s;
+eight author motions reproduced with maximum absolute feature error6.7726e-6,
+RMS2.19e-7..4.99e-7. This validates the released inference path for this fixture,
+not contact quality. App ap-hNhdDMjUoZfwWJuq5IsThd, imageim-yvwuQXEyvg2yH1dd46r6k0.
+
+Experiment B, declared before output: compare released truebones_f60_v2/80k
+against uniml3d_f60_v3/150k on native Fox39j and reviewed artist fox47j.
+Use each exact config/stats/EMA; explicitly select truebones stats for the
+source-specific model. Seeds1729,2718,31415, one repetition per seed, five
+prompts: exact old training captions `An object walks in place with its tail
+swaying.` and `An object bounds in place.`, plus `An object trots forward.`,
+`An object trots in place.`, `An object walks in place.`. All use unchanged
+adaptive dopri5/CFG3. Suppress only video generation for the numerical screen.
+No contact, phase or gait admission inferred from a60-frame window. Checkpoint
+source is HF174fc755, Truebones training caption source is UniML3Dfaaa81773b315247b03f183548e3898dbec2ce80/export/truebones/motion_captions.json.
+Native conditioning comes from the prior retained pipeline; its equality to
+old training preprocessing is unverified and cannot be claimed.

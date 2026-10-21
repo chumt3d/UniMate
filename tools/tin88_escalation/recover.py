@@ -12,13 +12,13 @@ def main():
     destination = Path(sys.argv[1])
     destination.mkdir(parents=True, exist_ok=True)
     volume = modal.Volume.from_name("tin88-unimate-eval", environment_name="main")
-    roots = ["unimate-20261021-upstream-go2-b", "unimate-20261021-upstream-fox-a"]
+    roots = sys.argv[2:] or ["unimate-20261021-upstream-go2-b", "unimate-20261021-upstream-fox-a"]
     inventory = []
     for root in roots:
         for entry in volume.iterdir("/" + root, recursive=True):
             inventory.append({"path": entry.path, "size": entry.size, "type": int(entry.type)})
     (destination / "volume-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
-    selected = [row for row in inventory if Path(row["path"]).suffix in {".json", ".npy", ".npz", ".log"}
+    selected = [row for row in inventory if Path(row["path"]).suffix in {".json", ".npy", ".npz", ".log", ".txt", ".png", ".mp4"}
                 and row["size"] < 5_000_000]
     print(json.dumps({"entries": len(inventory), "selected": len(selected),
                       "bytes": sum(row["size"] for row in selected)}), flush=True)
