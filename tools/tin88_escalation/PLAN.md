@@ -81,3 +81,54 @@ geometryed5ed33e, sourcecf183, decoderb78. The diagnostic-only exact-asset guard
 replaces broad generic Studio authoring admission; no arbitrary-asset or product
 admission follows. Exposed procedural known-plant control uses diagnostic
 unrestricted bend limits and is not a naturalness/professional-limit baseline.
+
+D paired first110 comparison: Euler50 seam maximum joint step .18495L versus
+Euler200 .17699L (-4.30%); peak acceleration/interior-p99 11.186 versus11.035.
+First60 FK position maximum difference5.97e-7. Finer Euler integration alone
+does not resolve this observed continuation discontinuity.
+
+E declared after all60 B samples: Truebones artist trot-forward root travel is
+1.697..1.927L across three seeds, versus v3 .140..1.547L, but mean FK/RIC gap
+is larger (.155 versus.075L). Test unchanged source8-window Truebones travel
+for seeds1729,2718,31415, and complete the v3 in-place walk's three seeds.
+This screens useful travel and multi-stride evidence; no phase/contact pass
+follows from motion energy or root displacement.
+
+All E3seeds and the remaining C v3walk2seeds generated410finiteframes.
+Original artist skin now has5short60frame readbacks/renders and v3walk1729
+long410readback/render (114.10s CPU). The long integration uses reviewed
+compose-long-fox-v2 f3002d01, unchanged native-readback-v2 977410b4 and core
+3ea7b56c. Eight60frame skin windows retain0:60then10:60, exactly410 frames;
+all original rotation/root channels are checked unchanged. Root-join tolerance
+metadata is an uncertified diagnostic roundoff estimate in root-parent-local
+coordinates, not a source-equivalence or motion-quality proof.
+
+The unmodified long v3 skin minimum varies -0.05250..0.14839m, against rest
+floor -0.002677655m. Rendered height alone was ambiguous: revise the diagnostic
+side camera to exact elevation0 and replace filled floor with outline to avoid
+whole-collection occlusion. This is view-only; the revised render remains to run.
+
+Next predeclared comparator: unchanged procedural-window kernel71205, contiguous
+windows60x6+50 with carried state. Derive a constant diagnostic speed profile
+from exposed known-plant control speed.620105m/s,20frame period,.4duty, original
+phases and measured average hip height. Shared swing height is the mean of
+control per-leg heights, an explicit deviation. Schema requires the single
+Froude0 anchor; actual calibration Froude is separate provenance. No optional
+body bob/tilt/shift, axial synthesis or variation. Mandatory clearance/reach
+spring still controls rootY. The endpoint extends two cycles beyond410 to cover
+late footprint lookahead. Pure uses rest nonleg rotations; hybrid keeps generated
+nonleg rotations exactly and authors legs/root. This is not raw model-gait proof.
+Retain emitted stance/touchdown differences from the exact20frame control;
+do not tune phase arithmetic after seeing output. Unrestricted diagnostic bend
+limits and mean swing do not establish naturalness or professional joint limits.
+
+Focused read-only GPT6.1Sol/high complexity review accepted410 assembly and
+bounded resources; corrected schema anchor and late-footprint endpoint before
+comparator execution. Numerical phase sensitivity remains measured-only.
+
+At00:12Paris22Oct ROOT prioritized RC5.1 under WSL pressure. All three queued
+own384MiB submissions were cancelled before remote launch. All stale attached
+clients ended; future calls use SDK app.run(detach=True)+spawn, retaincallID,
+then disconnect. Resume only at MemAvailable>=2GiB, check about10min apart.
+Prepared source and actual retained results are preserved separately. LongTB
+skin, remainingseedskins, sourcefloor-only and procedural/hybrid remain pending.

@@ -18,7 +18,8 @@ def measure(stage: str):
     for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
         os.environ[key] = "2"
     import numpy as np
-    if not stage.startswith("expand-") or "/" in stage or ".." in stage:
+    solver_comparison = stage == "solver-tiger-euler200"
+    if not (stage.startswith("expand-") or solver_comparison) or "/" in stage or ".." in stage:
         raise ValueError("An existing expansion analysis stage is required")
     root = Path("/evaluation/unimate-20261021-escalation-analysis") / stage
     if json.loads((root / "receipt.json").read_text())["status"] != "passed":
@@ -30,11 +31,11 @@ def measure(stage: str):
     sample = json.loads((root / "00/report.json").read_text())["samples"][0]
     arrays = np.load(sample["raw_arrays"]["path"], allow_pickle=False)
     positions = arrays["fk_positions"]
-    if len(positions) != 410:
-        raise ValueError("Expected the declared eight-window chain")
+    if len(positions) != (110 if solver_comparison else 410):
+        raise ValueError("Expected the declared chain length")
     length = sample["normalization"]["L_used"]
     fps = sample["fps"]
-    seams = np.arange(60, 410, 50)
+    seams = np.arange(60, len(positions), 50)
     centers = np.arange(1, len(positions) - 1)
     interior = np.all(np.abs(centers[:, None] - seams[None, :]) > 1, axis=1)
     acceleration = np.linalg.norm(np.diff(positions, n=2, axis=0), axis=-1) * fps ** 2 / length
@@ -54,10 +55,28 @@ def measure(stage: str):
             "perJoint": [{"name": name, "stepL": float(step[frame - 1, i]),
                 "accelerationLPerSecondSquared": float(peak[i]), "interiorP99": float(p99[i]),
                 "ratio": float(ratio[i]) if p99[i] > 0 else None} for i, name in enumerate(names)]})
+    if solver_comparison:
+        baseline_root = root.parent / "expand-tiger-0"
+        baseline = json.loads((baseline_root / "00/report.json").read_text())["samples"][0]
+        if baseline["normalization"]["L_used"] != length or baseline["fps"] != fps:
+            raise ValueError("Numerical comparison normalization differs")
+        baseline_arrays = np.load(baseline["raw_arrays"]["path"], allow_pickle=False)
+        baseline_positions = baseline_arrays["fk_positions"][:110]
+        baseline_acceleration = np.linalg.norm(np.diff(baseline_positions, n=2, axis=0), axis=-1) * fps ** 2 / length
+        baseline_p99 = np.quantile(baseline_acceleration[interior], .99, axis=0)
+        baseline_peak = baseline_acceleration[[58, 59]].max(axis=0)
+        baseline_step = np.linalg.norm(baseline_positions[60] - baseline_positions[59], axis=-1) / length
+        result["pairedFirst110Frames"] = {
+            "baselineInput": baseline["input"], "euler50MaximumJointStepL": float(baseline_step.max()),
+            "euler200MaximumJointStepL": float(step[59].max()),
+            "euler50MaximumAccelerationToInteriorP99": float((baseline_peak / baseline_p99).max()),
+            "euler200MaximumAccelerationToInteriorP99": result["seams"][0]["maximumRatio"],
+            "boundaryStepRelativeChange": float(step[59].max() / baseline_step.max() - 1),
+            "first60FkMaximumAbsoluteDifference": float(np.abs(positions[:60] - baseline_positions[:60]).max())}
     result["seconds"] = time.monotonic() - started
     output.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     volume.commit()
-    return {"output": str(output), "seconds": result["seconds"], "seams": [
+    return {"output": str(output), "seconds": result["seconds"], "pairedFirst110Frames": result.get("pairedFirst110Frames"), "seams": [
         {k: v for k, v in row.items() if k != "perJoint"} for row in result["seams"]]}
 
 

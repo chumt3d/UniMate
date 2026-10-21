@@ -28,6 +28,12 @@ def analyze(stage: str, image_id: str):
         manifests = sorted(Path("/evaluation/unimate-20261021-escalation-b/samples").glob(f"*/*/{seed}/manifest.json"))
         if len(manifests) != 4:
             raise ValueError("Comparison has not finished all four model/rig pairs")
+    elif stage in ("travel-1729", "travel-2718", "travel-31415"):
+        seed = stage.split("-")[-1]
+        root = Path("/evaluation/unimate-20261021-escalation-e/artist-truebones-forward") / seed
+        if json.loads((root / "receipt.json").read_text())["status"] != "passed":
+            raise ValueError("Travel generation has not passed")
+        manifests = [root / "motion_expand/manifest.json"]
     elif stage == "solver-tiger-euler200":
         root = Path("/evaluation/unimate-20261021-escalation-d/tiger-euler200")
         if json.loads((root / "receipt.json").read_text())["status"] != "passed":
@@ -75,4 +81,5 @@ def analyze(stage: str, image_id: str):
 
 @app.local_entrypoint()
 def main(stage: str = "reference"):
-    print(json.dumps(analyze.remote(stage, image.object_id)), flush=True)
+    call = analyze.spawn(stage, image.object_id)
+    print(json.dumps({"stage": stage, "callId": call.object_id}), flush=True)

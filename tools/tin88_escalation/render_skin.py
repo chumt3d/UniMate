@@ -51,7 +51,7 @@ def main():
                "input": str(args.input), "frames": frames, "fps": metadata["fps"], "floorY": args.floor,
                "camera": "Orthographic; follow animated original root horizontally, constant scale across this clip",
                "contactSheetFrames": chosen.tolist(), "videos": []}
-    for label, elevation, azimuth in [("side", 8, 0), ("top", 90, 0), ("three-quarter", 22, -55)]:
+    for label, elevation, azimuth in [("side", 0, 0), ("top", 90, 0), ("three-quarter", 22, -55)]:
         fig = plt.figure(figsize=(5.6, 4.2), dpi=100)
         axis = fig.add_subplot(111, projection="3d")
         axis.set_proj_type("ortho")
@@ -61,7 +61,9 @@ def main():
         axis.set_xlabel("X (m)"); axis.set_ylabel("Z (m)"); axis.set_zlabel("Y (m)")
         mesh = Poly3DCollection(view[0][triangles], linewidths=0, antialiased=False)
         axis.add_collection3d(mesh)
-        floor = Poly3DCollection([], facecolor="#dfe5e8", alpha=.4, edgecolor="#bcc7cd", linewidth=.4)
+        # A filled Matplotlib plane can sort in front of lower legs as a whole
+        # collection. An outline preserves visibility; measured heights remain in source arrays.
+        floor = Poly3DCollection([], facecolor="none", edgecolor="#9aa5ad", linewidth=.6)
         axis.add_collection3d(floor)
         title = fig.suptitle("", fontsize=9)
         destination = args.output / f"{label}.mp4"
@@ -87,6 +89,8 @@ def main():
                 writer.append_data(rgb)
                 if frame in chosen:
                     stills.append(rgb)
+                if frame in {0, frames // 2, frames - 1, 59, 60, 109, 110}:
+                    Image.fromarray(rgb).save(args.output / f"{label}-frame-{frame:03d}.png")
         rows.append(np.concatenate(stills, axis=1))
         plt.close(fig)
         receipt["videos"].append({"view": label, "path": str(destination), "sha256": hashlib.sha256(destination.read_bytes()).hexdigest()})
