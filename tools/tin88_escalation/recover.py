@@ -18,7 +18,7 @@ def main():
         for entry in volume.iterdir("/" + root, recursive=True):
             inventory.append({"path": entry.path, "size": entry.size, "type": int(entry.type)})
     (destination / "volume-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
-    selected = [row for row in inventory if Path(row["path"]).suffix in {".json", ".npy", ".npz", ".log", ".txt", ".png", ".mp4", ".f64le", ".u32le", ".glb"}
+    selected = [row for row in inventory if Path(row["path"]).suffix in {".json", ".npy", ".npz", ".log", ".txt", ".png", ".mp4", ".f64le", ".u32le", ".glb", ".gz"}
                 and row["size"] < 32_000_000]
     print(json.dumps({"entries": len(inventory), "selected": len(selected),
                       "bytes": sum(row["size"] for row in selected)}), flush=True)

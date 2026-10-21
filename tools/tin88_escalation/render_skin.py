@@ -17,7 +17,7 @@ def main():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
     import numpy as np
     from PIL import Image
 
@@ -48,11 +48,13 @@ def main():
     rows = []
     args.output.mkdir(parents=True, exist_ok=False)
     receipt = {"scope": "CPU rendering of actual original weighted vertices and triangles; plain material, no pose correction, grounding, IK, or acceptance",
+               "rendererSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+               "matplotlibVersion": matplotlib.__version__, "resolution": [1000, 750],
                "input": str(args.input), "frames": frames, "fps": metadata["fps"], "floorY": args.floor,
                "camera": "Orthographic; follow animated original root horizontally, constant scale across this clip",
                "contactSheetFrames": chosen.tolist(), "videos": []}
     for label, elevation, azimuth in [("side", 0, 0), ("top", 90, 0), ("three-quarter", 22, -55)]:
-        fig = plt.figure(figsize=(5.6, 4.2), dpi=100)
+        fig = plt.figure(figsize=(10, 7.5), dpi=100)
         axis = fig.add_subplot(111, projection="3d")
         axis.set_proj_type("ortho")
         axis.view_init(elev=elevation, azim=azimuth)
@@ -63,7 +65,7 @@ def main():
         axis.add_collection3d(mesh)
         # A filled Matplotlib plane can sort in front of lower legs as a whole
         # collection. An outline preserves visibility; measured heights remain in source arrays.
-        floor = Poly3DCollection([], facecolor="none", edgecolor="#9aa5ad", linewidth=.6)
+        floor = Line3DCollection([], colors="#9aa5ad", linewidths=.6)
         axis.add_collection3d(floor)
         title = fig.suptitle("", fontsize=9)
         destination = args.output / f"{label}.mp4"
@@ -81,8 +83,9 @@ def main():
                 x, z = roots[frame, :2]
                 axis.set_xlim(x - horizontal, x + horizontal)
                 axis.set_ylim(z - horizontal, z + horizontal)
-                floor.set_verts([[(x-horizontal,z-horizontal,args.floor), (x+horizontal,z-horizontal,args.floor),
-                                  (x+horizontal,z+horizontal,args.floor), (x-horizontal,z+horizontal,args.floor)]])
+                floor.set_segments([[(x-horizontal,z-horizontal,args.floor), (x+horizontal,z-horizontal,args.floor),
+                                     (x+horizontal,z+horizontal,args.floor), (x-horizontal,z+horizontal,args.floor),
+                                     (x-horizontal,z-horizontal,args.floor)]])
                 title.set_text(f"{args.title}\nOriginal fox skin / {label} / frame {frame} / {frame / metadata['fps']:.2f}s")
                 fig.canvas.draw()
                 rgb = np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy()

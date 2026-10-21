@@ -1,5 +1,21 @@
 # UniMate escalation, 21 October 2026
 
+Current state, 22 October 00:30 Paris: all declared generation runs are complete.
+The remaining consumer checks are the three-seed original-skin views/measurements,
+source floor-only correction, and the same-rig procedural and hybrid comparison.
+ANIM_POSE_2 will assess raw v3 F4 and visual quality from all three seeds; raw F1-F3
+remain unscorable because the stance classifier is unqualified. The hybrid is
+explicitly **procedural legs + UniMate overlay**, not evidence for model locomotion.
+No product, native DCC/export, device, or commercial acceptance is claimed.
+
+Local clients are paused under ROOT's shared-memory instruction until
+MemAvailable reaches 2 GiB. Submission now uses `submit_short.py`: spawn once,
+write the call ID, disconnect. `collect_call.py` makes one immediate result read.
+The updated views use 1000 x 750 pixels and a line-only floor. Source and syntax
+checks pass; those views and remaining measurements have not executed yet.
+`pack_evidence_packet.py` will preserve final channels, weighted skin arrays,
+renders, recipes, measurements, and source receipts without duplicate window skins.
+
 Owner: TIN-88 ROOT, delegated to UNIMATE_ESCALATION. Research and bounded repair;
 no production release or admission. Total authorised GPU budget $4; no training
 above $1 without owner approval. Scratch is disposable, evidence copied to the

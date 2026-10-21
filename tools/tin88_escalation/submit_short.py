@@ -15,10 +15,22 @@ elif kind=='gait':
     import gait_comparison_packet as packet
     args=(sys.argv[3],)
     function=packet.compare
+elif kind=='render':
+    import rerender_packet as packet
+    args=(sys.argv[3],int(sys.argv[4]))
+    function=packet.render
+elif kind=='metrics':
+    import skin_metrics_packet as packet
+    args=(sys.argv[3],)
+    function=packet.measure
+elif kind=='evidence':
+    import pack_evidence_packet as packet
+    args=()
+    function=packet.pack
 else:
     raise ValueError('Unknown bounded submission')
 with packet.app.run(detach=True):
-    call=function.spawn(*args,packet.image.object_id)
+    call=function.spawn(*args) if kind in ('metrics','evidence') else function.spawn(*args,packet.image.object_id)
     result={'kind':kind,'args':args,'image':packet.image.object_id,'callId':call.object_id}
     receipt.parent.mkdir(parents=True,exist_ok=True)
     receipt.write_text(json.dumps(result,indent=2)+'\n')
