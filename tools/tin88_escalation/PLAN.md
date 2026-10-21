@@ -46,3 +46,18 @@ No contact, phase or gait admission inferred from a60-frame window. Checkpoint
 source is HF174fc755, Truebones training caption source is UniML3Dfaaa81773b315247b03f183548e3898dbec2ce80/export/truebones/motion_captions.json.
 Native conditioning comes from the prior retained pipeline; its equality to
 old training preprocessing is unverified and cannot be claimed.
+
+Experiment C, declared before GPU output: unchanged upstream expansion with
+eight 60-frame windows and overlap10 produces410 fresh generated frames
+(13.67s at30fps). First window uses release dopri5; seven constrained windows
+use release Euler50. Reproduce Tiger seed0 first, then first-screen seed1729
+artist v3/Truebones walk/trot and native Truebones walk. Extend promising
+conditions to seeds2718/31415; single-seed screening cannot meet acceptance.
+No repeated playback frames count as strides. Original48-joint artist-skin
+decoding remains a separate consumer check. IMPL owns its source-based bundle.
+Read-only GPT-6.1 Sol/high child experiment_complexity_review inspects the
+experiment/source/resource contracts; escalation owner integrates findings.
+
+Diagnostic length L is canonical rest-root-to-lowest-joint height, not the
+rubric's per-leg length. Joint heuristics and spectral peaks remain telemetry;
+they do not determine contact phase, gait pass/fail, or original-skin quality.
