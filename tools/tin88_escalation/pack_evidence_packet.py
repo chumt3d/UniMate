@@ -1,6 +1,7 @@
 """Bundle bounded retained research evidence; omit duplicated per-window skin readbacks."""
 import hashlib
 import json
+import shutil
 import tarfile
 import time
 from pathlib import Path
@@ -18,8 +19,9 @@ def pack():
     output = base / 'unimate-20261021-escalation-final-bundles'
     output.mkdir(exist_ok=False)
     started = time.time()
-    groups = [(f'{case}-{seed}', [base / 'unimate-20261021-escalation-long-skin' / case / str(seed)])
+    groups = [(f'{case}-{seed}', [base / 'unimate-20261021-escalation-long-skin' / case / str(seed) / 'raw'])
               for case in ('v3-walk', 'truebones-forward') for seed in (1729, 2718, 31415)]
+    groups += [('v3-walk-1729-floor-only', [base / 'unimate-20261021-escalation-long-skin/v3-walk/1729/floor-only'])]
     groups += [(arm, [base / 'unimate-20261021-escalation-gait' / arm]) for arm in ('procedural', 'hybrid')]
     groups += [(label, [base / name]) for label, name in (
         ('generation-c', 'unimate-20261021-escalation-c'),
@@ -27,6 +29,22 @@ def pack():
         ('generation-e', 'unimate-20261021-escalation-e'),
         ('metrics', 'unimate-20261021-escalation-skin-metrics'))]
     groups += [('initial-skin', [base / 'unimate-20261021-escalation-skin/initial'])]
+    author_source = Path('/opt/escalation/tiger')
+    author_output = base / 'unimate-20261021-escalation-author-reference'
+    author_output.mkdir(exist_ok=False)
+    author_files = []
+    for file in sorted(author_source.rglob('*')):
+        if not file.is_file() or file.suffix not in ('.npy', '.json', '.md'): continue
+        if file.is_symlink() or file.stat().st_size > 32_000_000: raise ValueError(f'Unexpected author input: {file}')
+        relative = file.relative_to(author_source)
+        destination = author_output / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(file, destination)
+        author_files.append({'path':str(relative), 'bytes':file.stat().st_size,
+            'sha256':hashlib.sha256(file.read_bytes()).hexdigest()})
+    if not any(item['path'].startswith('samples/motions/') for item in author_files): raise ValueError('Missing author reference arrays')
+    (author_output / 'retained-input-identities.json').write_text(json.dumps(author_files, indent=2) + '\n')
+    groups += [('author-reference', [author_output])]
     manifest = {'scope': 'Retained research evidence, not acceptance', 'bundles': [], 'missingRoots': []}
     for label, roots in groups:
         files = []
