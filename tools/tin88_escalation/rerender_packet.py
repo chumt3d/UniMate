@@ -15,14 +15,14 @@ def render(case: str,seed: int,image_id: str):
     if case not in ('v3-walk','truebones-forward') or seed not in (1729,2718,31415): raise ValueError('Unknown retained case')
     source=Path('/evaluation/unimate-20261021-escalation-long-skin')/case/str(seed)/'raw'
     if json.loads((source/'receipt.json').read_text())['status']!='passed': raise ValueError('Incomplete readback')
-    destination=source/'renders-clear-floor'
+    destination=source/'renders-clear-floor-v2'
     if destination.exists(): raise FileExistsError(destination)
     rig=json.loads((source/'readback/rig-context.json').read_text())
     started=time.time()
     command=['/opt/conda/bin/python','/opt/escalation/render_skin.py','--input',str(source/'readback'),'--output',str(destination),
        '--floor',str(rig['restFullSkinMinimumY']),'--title',f'{case} seed {seed} / unmodified model']
-    with (source/'clear-floor-render.log').open('w') as log:
+    with (source/'clear-floor-v2-render.log').open('w') as log:
         subprocess.run(command,check=True,stdout=log,stderr=subprocess.STDOUT)
     receipt={'status':'passed','image':image_id,'seconds':time.time()-started,'output':str(destination)}
-    (source/'clear-floor-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n'); volume.commit()
+    (source/'clear-floor-v2-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n'); volume.commit()
     return receipt

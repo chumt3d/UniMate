@@ -148,3 +148,14 @@ clients ended; future calls use SDK app.run(detach=True)+spawn, retaincallID,
 then disconnect. Resume only at MemAvailable>=2GiB, check about10min apart.
 Prepared source and actual retained results are preserved separately. LongTB
 skin, remainingseedskins, sourcefloor-only and procedural/hybrid remain pending.
+
+22 October evening resume: ROOT authorized at most $3 additional Modal spend.
+The restart cleared scratch; restored exact pushed349ccad and verified all44
+durable runtime bundle files. Provider baseline is $0.84396296 total, including
+$0.72013197 GPU. No further GPU generation is planned.
+
+First corrected render reached execution but failed before rendering: Matplotlib
+3.10.8 tried to autoscale an empty Line3DCollection. The complete skin-array
+bounds already govern the camera, so disable that collection's automatic limit
+update. Preserve the failed log and use a new renders-clear-floor-v2 directory.
+Verify the complete corrected clip before dispatching other renders.

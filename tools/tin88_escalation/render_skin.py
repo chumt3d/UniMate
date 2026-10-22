@@ -66,7 +66,8 @@ def main():
         # A filled Matplotlib plane can sort in front of lower legs as a whole
         # collection. An outline preserves visibility; measured heights remain in source arrays.
         floor = Line3DCollection([], colors="#9aa5ad", linewidths=.6)
-        axis.add_collection3d(floor)
+        # Limits come from the complete skin arrays and are set explicitly per frame.
+        axis.add_collection3d(floor, autolim=False)
         title = fig.suptitle("", fontsize=9)
         destination = args.output / f"{label}.mp4"
         stills = []
