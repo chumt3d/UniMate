@@ -1,0 +1,88 @@
+{
+  "purpose": "Increment1 research reference and qualification handoff; not a product admission or dispatch request",
+  "rawArtistFoxLocomotionAdmitted": false,
+  "independentReview": {
+    "reviewer": "ANIM_POSE_2",
+    "verdict": "F4/V reopening not met on any of the three raw v3 seeds; U26 remains closed",
+    "scope": "Classifier-independent measurements plus sampled corrected side views; not paw-level contact certification, control naturalness, or practitioner validation",
+    "ownerAdjudication": "Retain hind-hover and burial findings. Truebones comparator is generated, authored stance is 8 frames, and low net travel alone is not a failure for an in-place prompt."
+  },
+  "recommendedReference": {
+    "repository": "Linzhan/UniMate",
+    "revision": "174fc755ec248d0c98f27759b7a95648e7f05905",
+    "checkpointPath": "unimate_uniml3d_f60_v3/checkpoints/checkpoint_step_150000.pt",
+    "checkpointSha256": "f991ddd87262c251f4681d18297a6163ab4f139daa28c86d5ef0a66771df7bc6",
+    "configSha256": "1ffbd379d3667de7d701ed6f3418f1c9d1a66f35d2653776255008c07c051aaa",
+    "statsSha256": "0ff2b9ef3ea9a15b024ab0670e55f659478251501e5596f9011d5bca4cf67773",
+    "useDatasetStats": false,
+    "inferenceSource": "b78c7807df7cf4231d4e67f8d0ece29c5e11025b",
+    "motionSource": "ac236251f90e5ca37c444c53ad383fc85de6d833",
+    "encoderRevision": "7bcac572ce56db69c1ea7c8af255c5d7c9672fc2",
+    "reason": "Reproduces all eight public author Tiger outputs; useful reproducible source and generated non-leg overlay candidate. Raw artist-fox gait remains unqualified."
+  },
+  "testedFreeSampling": {
+    "frames": 60,
+    "fps": 30,
+    "cfgScale": 3,
+    "method": "dopri5",
+    "atol": 0.000001,
+    "rtol": 0.001,
+    "savedTimePoints": 50,
+    "warning": "50 saved times are not 50 denoiser evaluations. Released source differs from paper fixed Euler sampling."
+  },
+  "completedScreen": {
+    "clips": 60,
+    "checkpoints": ["uniml3d_f60_v3/150000", "truebones_f60_v2/80000"],
+    "rigs": ["artist fox: 47 effective joints, 48 original joints", "native Fox: 39 conditioned joints"],
+    "seeds": [1729, 2718, 31415],
+    "repetitionsPerSeed": 1,
+    "prompts": [
+      "An object walks in place with its tail swaying.",
+      "An object bounds in place.",
+      "An object trots forward.",
+      "An object trots in place.",
+      "An object walks in place."
+    ],
+    "limitations": [
+      "A 60-frame screen is not three-stride gait acceptance.",
+      "Native Fox conditioning equivalence to the old training preprocessing is unverified.",
+      "Equal seed integers across checkpoint widths do not imply paired initial noise."
+    ]
+  },
+  "completedOriginalSkinLongGrid": {
+    "frames": 410,
+    "fps": 30,
+    "windowFrames": 60,
+    "windows": 8,
+    "overlapFrames": 10,
+    "initialSampler": "released adaptive dopri5",
+    "continuationSampler": "released constrained inbetween_sample_ode, num_steps=50 (Euler)",
+    "seeds": [1729, 2718, 31415],
+    "conditions": [
+      {"checkpoint": "uniml3d_f60_v3/150000", "prompt": "An object walks in place with its tail swaying."},
+      {"checkpoint": "truebones_f60_v2/80000", "prompt": "An object trots forward."}
+    ],
+    "acceptedStepCount": null,
+    "verdict": "Retained diagnostic outputs; no raw artist-fox locomotion admission."
+  },
+  "usableControl": {
+    "label": "procedural legs + UniMate overlay",
+    "sourceKernel": "71205cbfbed85dd973e4cc57b909679570355bd3",
+    "periodFrames": 20,
+    "duty": 0.4,
+    "speedMetersPerSecond": 0.620105,
+    "ownership": "Procedural kernel owns legs and root; UniMate supplies retained non-leg rotations.",
+    "scope": "Exact-rig numerical diagnostic, not a fox style target or professional gait acceptance.",
+    "limitations": ["Unrestricted diagnostic bend limits", "Mean shared swing height", "No optional body bob, tilt, shift, axial synthesis or variation", "Root clearance and reach spring remain active"]
+  },
+  "unrunOrUnqualified": [
+    "CFG 5 or 7 on this grid",
+    "Browser fixed-midpoint 10/20/50 quality and native WebGPU latency",
+    "Qualified raw stance classifier and F1-F3 gait grades",
+    "Full paper E.5 foot locking: numerical policy not specified",
+    "180-frame single-pass model: not among the inspected f60 releases",
+    "Exact paper/showcase case reproduction without original manifest and protected trajectory access"
+  ],
+  "nextGate": "First obtain a source-reference raw motion that meets original-skin F4 and visual requirements across at least three seeds and three real strides. Only then qualify a faster browser grid using identical initial-noise tensors and matched padded width. Do not spend a broad midpoint or CFG sweep to optimize a reference that still fails the required motion outcome.",
+  "commercialGate": "HF weights declared CC BY-NC 4.0; DEC10 remains with the owner. This is a technical quality recommendation."
+}

@@ -1,20 +1,22 @@
 # UniMate escalation, 21 October 2026
 
-Current state, 22 October 00:30 Paris: all declared generation runs are complete.
-The remaining consumer checks are the three-seed original-skin views/measurements,
-source floor-only correction, and the same-rig procedural and hybrid comparison.
-ANIM_POSE_2 will assess raw v3 F4 and visual quality from all three seeds; raw F1-F3
-remain unscorable because the stance classifier is unqualified. The hybrid is
-explicitly **procedural legs + UniMate overlay**, not evidence for model locomotion.
-No product, native DCC/export, device, or commercial acceptance is claimed.
+Current state, 22 October evening: all declared generation and all nine final
+original-skin comparisons are complete and recovered durably after two laptop
+restarts. The packet includes three seeds per raw checkpoint condition, source
+floor-only correction, pure procedural and procedural legs + UniMate overlay.
+See RESULT.md and SAMPLING-GRID.json for findings and the Increment1 handoff.
+Raw F1-F3 remain unscorable; no product, native DCC/export, device, naturalness
+or commercial acceptance is claimed. ANIM_POSE_2 completed its independent
+three-seed metrics/side-view review: F4/V reopening not met; U26 stays closed.
+The owner accepted its bounded hind-hover finding and corrected comparison
+labels and the interpretation of in-place travel, as recorded in RESULT.md.
 
-Local clients are paused under ROOT's shared-memory instruction until
-MemAvailable reaches 2 GiB. Submission now uses `submit_short.py`: spawn once,
-write the call ID, disconnect. `collect_call.py` makes one immediate result read.
-The updated views use 1000 x 750 pixels and a line-only floor. Source and syntax
-checks pass; those views and remaining measurements have not executed yet.
-`pack_evidence_packet.py` will preserve final channels, weighted skin arrays,
-renders, recipes, measurements, and source receipts without duplicate window skins.
+The earlier fixed 2 GiB pause was lifted by ROOT. All resumed local CPU work
+used heavy-run admission, and remote calls used submit-and-disconnect with
+durable call IDs. The final CPU phase used no additional GPU generation.
+Fifteen verified archives preserved 655 final-channel, skin-array, render,
+recipe, measurement and receipt files, omitting duplicate per-window skins.
+The later paragraphs below retain experiment declarations and historical states.
 
 Owner: TIN-88 ROOT, delegated to UNIMATE_ESCALATION. Research and bounded repair;
 no production release or admission. Total authorised GPU budget $4; no training
