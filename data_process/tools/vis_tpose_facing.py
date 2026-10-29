@@ -51,7 +51,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from Animation import Animation, Quaternions, positions_global  # noqa: E402
+from unimate.utils.animation import Animation, Quaternions, positions_global  # noqa: E402
 from data_process.utils.motion_features import (  # noqa: E402
     DegenerateSkeletonError, process_tpose, resolve_face_joint_idxs,
 )

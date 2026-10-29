@@ -59,6 +59,7 @@ class TrainingArgs:
     stats_path: Optional[str] = None
     visualize: bool = False  # opt in to expensive debug sampling/rendering
     stop_after_seconds: Optional[float] = None  # checkpointed invocation allowance
+    stop_after_updates: Optional[int] = None  # completed updates in this invocation
 
 
 # ===================================================================
@@ -73,6 +74,11 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
     if (args.stop_after_seconds is not None
             and (not math.isfinite(args.stop_after_seconds) or args.stop_after_seconds <= 0)):
         raise ValueError("--stop_after_seconds must be positive and finite")
+    if (args.stop_after_updates is not None
+            and (isinstance(args.stop_after_updates, bool)
+                 or not isinstance(args.stop_after_updates, int)
+                 or args.stop_after_updates <= 0)):
+        raise ValueError("--stop_after_updates must be a positive integer")
     is_main = accelerator.is_main_process
     num_workers = (args.num_workers if args.num_workers is not None
                    else config.training.num_workers)
@@ -229,6 +235,7 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
     grad_norm = None
     last_checkpoint_at = time.monotonic()
     stop_requested = False
+    segment_updates = 0
 
     while not tracker.training_finished() and not stop_requested:
         pbar.set_description(tracker.get_progress_desc())
@@ -284,6 +291,7 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
 
                     pbar.update(1)
                     tracker.step()
+                    segment_updates += 1
 
                     # --- Per-effective-step side effects ---
                     step = tracker.current_step
@@ -307,8 +315,12 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
                     milestone = (step % config.training.save_interval == 0
                                  or tracker.training_finished() or final_epoch_batch)
                     recovery_due = time.monotonic() - last_checkpoint_at >= RECOVERY_CHECKPOINT_SECONDS
-                    stop_requested = (args.stop_after_seconds is not None
-                                      and time.monotonic() - segment_started_at >= args.stop_after_seconds)
+                    stop_requested = (
+                        (args.stop_after_seconds is not None
+                         and time.monotonic() - segment_started_at >= args.stop_after_seconds)
+                        or (args.stop_after_updates is not None
+                            and segment_updates >= args.stop_after_updates)
+                    )
                     if recovery_due or milestone or stop_requested:
                         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_step_{step}.pt")
                         save_checkpoint(checkpoint_path, accelerator, model, optimizer,

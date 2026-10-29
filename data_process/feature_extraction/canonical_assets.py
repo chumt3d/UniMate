@@ -70,8 +70,8 @@ from loguru import logger
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from Animation import Animation, positions_global  # noqa: E402
-from Quaternions import Quaternions  # noqa: E402
+from unimate.utils.animation import Animation, positions_global  # noqa: E402
+from unimate.utils.quaternions import Quaternions  # noqa: E402
 
 from data_process.mesh_animation.canonical_rig import UndeterminedRoll, bake_canonical_asset  # noqa: E402
 from data_process.utils.asset_files import (  # noqa: E402

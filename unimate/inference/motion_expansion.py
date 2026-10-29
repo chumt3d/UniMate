@@ -30,7 +30,7 @@ from typing import List
 
 import numpy as np
 import torch
-from Quaternions import Quaternions
+from unimate.utils.quaternions import Quaternions
 
 from unimate.utils.logger import get_logger
 from unimate.utils.motion_utils import rotate_unimate_facing

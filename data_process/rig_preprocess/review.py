@@ -281,7 +281,7 @@ def _forward(face, raw, rest_pos):
     q = facing_quat(face, raw, rest_pos)
     if q is None:
         return None
-    from Quaternions import Quaternions
+    from unimate.utils.quaternions import Quaternions
     return (-Quaternions(np.asarray(q)[None]) * np.array([[0.0, 0.0, 1.0]]))[0]
 
 

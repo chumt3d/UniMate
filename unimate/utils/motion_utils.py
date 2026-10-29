@@ -10,7 +10,7 @@ trajectory is recovered via cumulative integration).
 
 import numpy as np
 
-from Quaternions import Quaternions
+from unimate.utils.quaternions import Quaternions
 
 from unimate.utils.rotation_conversions import matrix_to_quaternion_np, rotation_6d_to_matrix_np
 
@@ -302,7 +302,7 @@ def fk_global_positions(rotations_bvh, parents, offsets, root_positions):
     Returns:
         Global joint positions (T, J, 3).
     """
-    from Animation import Animation, positions_global
+    from unimate.utils.animation import Animation, positions_global
     T = rotations_bvh.shape[0]
     anim_positions = offsets[None].repeat(T, axis=0)  # (T, J, 3)
     anim_positions[:, 0] = root_positions
@@ -411,7 +411,7 @@ def recover_unimate_anim_from_rot(data, parents, offsets):
     anim_positions = offsets[None].repeat(nframes, axis=0)  # (T, J, 3)
     anim_positions[:, 0] = r_pos
 
-    from Animation import Animation
+    from unimate.utils.animation import Animation
     anim = Animation(
         rotations=bvh_rots,
         positions=anim_positions,

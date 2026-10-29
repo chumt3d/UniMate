@@ -145,7 +145,7 @@ class ExportEvidence:
                      if os.path.isfile(p)]
         if not paths:
             return None, None
-        from Animation import Animation, Quaternions, positions_global
+        from unimate.utils.animation import Animation, Quaternions, positions_global
         d = np.load(paths[0], allow_pickle=True)
         parents = d["parents"]
         anim = Animation(

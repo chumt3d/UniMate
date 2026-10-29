@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-from Quaternions import Quaternions
+from unimate.utils.quaternions import Quaternions
 
 from unimate.configs.schema import MainConfig
 from unimate.dataset.transforms import (

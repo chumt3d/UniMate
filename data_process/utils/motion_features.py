@@ -32,13 +32,13 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
-from Animation import (
+from unimate.utils.animation import (
     Animation,
     positions_global,
     rotations_global,
     offsets_from_positions
 )
-from Quaternions import Quaternions
+from unimate.utils.quaternions import Quaternions
 
 from data_process.utils.topology import (
     compute_edge_relations_and_distances,
@@ -236,8 +236,10 @@ def _load_npz_anim(object_npz_path, raw_parents, raw_njoints,
             anim_local_pos = anim_local_pos[:, perm]
             rest_local_pos = rest_local_pos[perm]
 
-    motion_positions = rest_local_pos.copy()[None, :].repeat(nframes, axis=0)
-    motion_positions[:, 0] = anim_local_pos[:, 0]  # root joint's local position is the animated global position
+    # Source clips can carry animated local translations below the root.
+    # Keep those observations; the downstream RIC/FK recovery gate decides
+    # whether this motion fits the fixed-offset model representation.
+    motion_positions = anim_local_pos.copy()
 
     motion_anim = Animation(
         rotations=Quaternions(anim_local_rot),

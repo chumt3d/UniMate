@@ -23,7 +23,7 @@ import torch
 from torch.utils import data
 from tqdm import tqdm
 
-from Quaternions import Quaternions
+from unimate.utils.quaternions import Quaternions
 
 from unimate.dataset.transforms import (
     apply_cropping, extract_conditions, apply_normalization,
@@ -41,7 +41,7 @@ from unimate.models.text_encoder.factory import create_text_encoder
 from unimate.utils.text_emb_cache import load_cache, load_caches, pool as pool_tokens
 from unimate.utils.logger import get_logger
 from unimate.dataset.mixture import augmentations as aug_ops
-from Animation import offsets_from_positions
+from unimate.utils.animation import offsets_from_positions
 
 
 logger = get_logger(file_name=__file__, debug="mixture_dataset")

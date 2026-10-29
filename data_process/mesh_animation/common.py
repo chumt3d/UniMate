@@ -28,7 +28,7 @@ import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
-from Animation import Quaternions, transforms_global, transforms_local
+from unimate.utils.animation import Quaternions, transforms_global, transforms_local
 
 from data_process.utils.asset_files import (
     CANONICAL_ASSETS_DIR,

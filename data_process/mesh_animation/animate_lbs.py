@@ -63,7 +63,7 @@ from loguru import logger
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from Animation import transforms_global, transforms_local  # noqa: E402
+from unimate.utils.animation import transforms_global, transforms_local  # noqa: E402
 
 from data_process.mesh_animation.common import (  # noqa: E402
     DEFAULT_MIXAMO_CHARACTER,

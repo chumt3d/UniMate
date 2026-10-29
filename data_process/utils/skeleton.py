@@ -18,8 +18,8 @@ from collections import deque
 
 import numpy as np
 from loguru import logger
-from Quaternions import Quaternions
-from Animation import Animation, positions_global, offset_lengths
+from unimate.utils.quaternions import Quaternions
+from unimate.utils.animation import Animation, positions_global, offset_lengths
 
 
 # ---------------------------------------------------------------------------

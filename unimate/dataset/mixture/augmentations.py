@@ -15,7 +15,7 @@ import random
 
 import numpy as np
 
-from Quaternions import Quaternions
+from unimate.utils.quaternions import Quaternions
 
 from unimate.utils.topology_utils import (
     compute_edge_relations_and_distances,

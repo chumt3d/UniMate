@@ -3,14 +3,7 @@
 #
 #   conda create -n unimate python=3.10 -y
 #   conda activate unimate
-#   pip install "setuptools<81"
-#   pip install -r requirements.txt --no-build-isolation
-#
-# The Motion git dependency has a legacy setup.py that imports pkg_resources,
-# which setuptools >= 81 no longer ships. Isolated builds always use the
-# newest setuptools, so the install must run with --no-build-isolation
-# against an env setuptools < 81 — installed by the step above (fresh conda
-# envs ship setuptools >= 81 too); the pin below keeps it from upgrading.
+#   sfw pip install -r requirements.txt
 #
 # Only direct dependencies are listed; everything else (CUDA runtime libs,
 # tokenizers, HTTP stack, ...) is resolved transitively by pip. Versions are
@@ -22,8 +15,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu124
 # Blender official wheel index — PyPI no longer hosts cp310 bpy wheels
 --extra-index-url https://download.blender.org/pypi/
-
-setuptools<81                   # keeps pkg_resources available (Motion build)
 
 # ── Core / training ──────────────────────────────────────────────────────────
 numpy==2.2.6
@@ -65,9 +56,8 @@ google-genai==2.19.0            # Gemini caption backend ("from google import ge
 # https://hf.co/cli/install.sh works too if you prefer it outside the env.
 huggingface_hub==1.29.0
 
-# ── Motion / animation library (Holden-style Animation / Quaternions /
-#    InverseKinematics; used across data_process/) ───────────────────────────
-Motion @ git+https://github.com/inbar-2344/Motion.git
+# Quaternion and FK operations use the MIT-only unimate.utils modules.
+# The optional external RIC-to-IK mode is not part of this cleared pilot.
 
 # ── Blender as a Python module (motion_export/, motion_rendering/,
 #    mesh_animation/). The EEVEE render stage requires the pip module;

@@ -37,7 +37,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from Animation import Animation, Quaternions, positions_global  # noqa: E402
+from unimate.utils.animation import Animation, Quaternions, positions_global  # noqa: E402
 from data_process.utils.plotting import render_skeleton_motion_directed  # noqa: E402
 
 

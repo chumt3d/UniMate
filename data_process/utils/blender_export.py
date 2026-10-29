@@ -18,7 +18,7 @@ import bpy
 from math import floor, ceil
 from pathlib import Path
 from loguru import logger
-from Animation import Animation, Quaternions, positions_global
+from unimate.utils.animation import Animation, Quaternions, positions_global
 from data_process.utils.plotting import save_skeleton_motion, save_skeleton_tpose
 from data_process.utils.export_markers import (  # noqa: F401  (re-exported)
     collect_joint_names_from_markers,

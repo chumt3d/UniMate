@@ -16,6 +16,7 @@ def create_dataset(
     target_object_types: Optional[Set[str]] = None,
     target_clip_stems: Optional[Set[str]] = None,
     stats_path: Optional[str] = None,
+    fixed_model_shape: bool = False,
 ):
     """Build the Mixture dataset.
 
@@ -33,10 +34,10 @@ def create_dataset(
       ``stats_path`` — load normalization stats from disk instead of
           recomputing them.
     """
-    if inference:
+    if inference or fixed_model_shape:
         if dataset_config.max_joints <= 0 or dataset_config.max_depth <= 0:
             raise ValueError(
-                f"inference=True requires saved max_joints/max_depth in the "
+                f"Fixed model shape requires positive max_joints/max_depth in the "
                 f"config, got max_joints={dataset_config.max_joints}, "
                 f"max_depth={dataset_config.max_depth}."
             )
@@ -141,7 +142,8 @@ def create_train_dataloader(
     them from the data (resume / fine-tune keep the normalization the
     checkpoint was trained with).
     """
-    dataset = create_dataset(dataset_config, model_config, stats_path=stats_path)
+    dataset = create_dataset(dataset_config, model_config, stats_path=stats_path,
+                             fixed_model_shape=True)
 
     if not balanced and dataset_config.sampler_dataset_weights is not None:
         raise ValueError("dataset.sampler_dataset_weights needs training.balanced=true "

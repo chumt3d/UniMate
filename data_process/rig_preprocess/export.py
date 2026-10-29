@@ -19,8 +19,8 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
-from Animation import Animation
-from Quaternions import Quaternions
+from unimate.utils.animation import Animation
+from unimate.utils.quaternions import Quaternions
 
 from data_process.motion_export import export_general, export_objaverse, export_truebones
 from data_process.utils.blender_export import (
