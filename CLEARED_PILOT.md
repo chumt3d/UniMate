@@ -38,3 +38,11 @@ cleared runtime. Its existence grants no permission to install the removed
 dependency. Use the fixed-offset decoder for this pilot. The original broad
 requirements file is source provenance; the pilot image uses a separately
 hashed minimal dependency list and a code-only allowlist.
+
+The dataset consumer also translates each stored window by its initial root
+XZ before feature extraction. Stage4 intentionally retains the full action's
+coordinates, whereas feature recovery integrates root XZ from zero. Previously
+only the first window passed recovery for a moving root. This consumer deviation
+retains every source/window NPZ, preserves motion and absolute Y, and leaves
+the1e-4 RIC/FK gate unchanged. The regression loads two real window NPZs from
+an analytic turning chain and checks both recovered trajectories.

@@ -637,13 +637,18 @@ class MotionDataset(data.Dataset):
         parents = meta['condition']['parents']
         offsets = meta['offsets']
         npz = np.load(pjoin(motion_dir, motion_name), allow_pickle=False)
-        global_positions = npz['global_positions']              # (F, J, 3)
+        global_positions = npz['global_positions'].copy()       # (F, J, 3)
         local_rotations = npz['local_rotations']                # (F, J, 4)
         root_facing_quat = npz['root_facing_quat']              # (F, 4)
         self._check_clip_fps(motion_dir, motion_name, npz)
 
+        # Stage4 windows retain the whole action's world origin. The12-channel
+        # representation integrates root XZ from zero, so each window must use
+        # its own initial root origin for the unchanged RIC/FK round-trip gate.
+        global_positions[..., 0] -= global_positions[0, 0, 0]
+        global_positions[..., 2] -= global_positions[0, 0, 2]
+
         if self.ground_motion_height:
-            global_positions = global_positions.copy()
             global_positions[..., 1] -= global_positions[..., 1].min()
 
         # Rebase against the T-pose reference so features live in a
