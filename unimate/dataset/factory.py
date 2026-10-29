@@ -4,7 +4,8 @@ from typing import Optional, Set
 
 from torch.utils.data import DataLoader
 
-from unimate.dataset.mixture.dataset import Mixture, MixtureSampler, SkeletonDataset
+from unimate.dataset.mixture.dataset import Mixture, SkeletonDataset
+from unimate.dataset.mixture.sampler import MixtureSampler
 from unimate.dataset.mixture.collate import mixture_batch_collate
 
 

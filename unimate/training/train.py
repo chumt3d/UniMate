@@ -8,9 +8,9 @@ CLI overrides (via tyro): ``--output_dir``, ``--batch_size``, ``--num_workers``,
 ``--resume``, ``--stats_path``.
 """
 
-import json
 import math
 import os
+import time
 import warnings
 from dataclasses import dataclass
 from typing import Optional
@@ -28,10 +28,17 @@ from unimate.dataset.factory import create_train_dataloader
 from unimate.models.factory import create_model
 from unimate.training.trainer import DiffusionTrainer
 from unimate.training.tracker import TrainingTracker
+from unimate.training.exact_resume import (
+    ExactDataLoader, input_identity, training_identity, preserve_rng,
+    read_checkpoint, restore_checkpoint, save_checkpoint,
+)
 from unimate.utils.logger import get_logger
 
 warnings.filterwarnings("ignore")
 logger = get_logger(file_name=__file__)
+
+# Tiny3D RETRAIN-PLAN.md, "Checkpointed training and first run" (2026-10-29).
+RECOVERY_CHECKPOINT_SECONDS = 120
 
 
 # ===================================================================
@@ -50,6 +57,8 @@ class TrainingArgs:
     # (e.g. the dataset_stats.npy of the run being fine-tuned). Default: the
     # resumed run's own file with --resume, otherwise computed.
     stats_path: Optional[str] = None
+    visualize: bool = False  # opt in to expensive debug sampling/rendering
+    stop_after_seconds: Optional[float] = None  # checkpointed invocation allowance
 
 
 # ===================================================================
@@ -60,7 +69,16 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
                     accelerator: Accelerator):
     """End-to-end training: setup, loop, checkpoint, visualize."""
 
+    segment_started_at = time.monotonic()
+    if (args.stop_after_seconds is not None
+            and (not math.isfinite(args.stop_after_seconds) or args.stop_after_seconds <= 0)):
+        raise ValueError("--stop_after_seconds must be positive and finite")
     is_main = accelerator.is_main_process
+    num_workers = (args.num_workers if args.num_workers is not None
+                   else config.training.num_workers)
+    if accelerator.num_processes != 1 or num_workers != 0:
+        raise ValueError("Exact training checkpoints require one process and num_workers=0")
+    checkpoint = read_checkpoint(args.resume) if args.resume else None
 
     # ---- Output directories ----
     output_dir = args.output_dir or config.experiment.output_dir
@@ -70,14 +88,11 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
     for d in [checkpoint_dir, log_dir, debug_dir]:
         os.makedirs(d, exist_ok=True)
 
+    if checkpoint is None and any(name.endswith(".pt") for name in os.listdir(checkpoint_dir)):
+        raise FileExistsError("New training requires an output directory without checkpoints")
+
     # ---- Reproducibility ----
     if config.training.seed is not None:
-        # device_specific: seed += process_index. Without it every rank draws
-        # the SAME flow-matching t and the same x0 noise (both come from the
-        # global RNG), so an 8-GPU step sees one batch's worth of distinct
-        # (t, noise) pairs instead of eight — and the same CFG caption-dropout
-        # pattern on every rank. Model init may now differ per rank, which is
-        # harmless: DDP broadcasts rank 0's parameters when it wraps the model.
         set_seed(config.training.seed, device_specific=True)
         logger.info(
             f"Set random seed to {config.training.seed} (device-specific)")
@@ -88,13 +103,18 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
     # a valid override that `or` would silently replace with the config value.
     batch_size = (args.batch_size if args.batch_size is not None
                   else config.training.batch_size)
-    num_workers = (args.num_workers if args.num_workers is not None
-                   else config.training.num_workers)
     # Write the overrides back so the run's config.json records what ran.
     config.training.batch_size = batch_size
     config.training.num_workers = num_workers
+    inputs = input_identity(config)
+    inputs["execution"] = {"device": str(accelerator.device),
+                           "mixed_precision": accelerator.mixed_precision,
+                           "accumulation": accelerator.gradient_accumulation_steps}
+    if checkpoint is not None:
+        for key, value in inputs.items():
+            if checkpoint["identity"].get(key) != value:
+                raise ValueError(f"Resume input identity mismatch: {key}")
     stats_src = _resolve_train_stats_path(args)
-    _pin_resumed_max_depth(args, config)
     dataloader = create_train_dataloader(
         dataset_config=config.dataset,
         model_config=config.model,
@@ -105,17 +125,21 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
         seed=config.training.seed or 0,
     )
 
-    # ---- Persist config (after dataset so auto-computed max_joints /
-    # max_depth are written; inference reads these back to rebuild the
-    # exact same model architecture). ----
-    if is_main:
-        config_path = os.path.join(output_dir, "config.json")
-        config.to_json(config_path)
-        logger.info(f"Saved config to {config_path}")
-
-        # Persist normalization stats so inference normalizes identically.
-        stats_path = os.path.join(output_dir, "dataset_stats.npy")
+    stats_path = os.path.join(output_dir, "dataset_stats.npy")
+    # Resumes must validate the original stats before writing any run artifacts.
+    identity_stats = stats_src if checkpoint is not None else stats_path
+    if checkpoint is None:
         dataloader.dataset.save_dataset_stats(stats_path)
+    identity = training_identity(inputs, config, dataloader.dataset, identity_stats)
+    if checkpoint is not None and checkpoint["identity"] != identity:
+        raise ValueError("Resume resolved config, split, stats or encoder identity mismatch")
+    config.to_json(os.path.join(output_dir, "config.json"))
+    if checkpoint is not None and os.path.abspath(stats_src) != os.path.abspath(stats_path):
+        # Preserve the exact bytes whose identity was checked (no recomputation).
+        import shutil
+        shutil.copyfile(stats_src, stats_path)
+    dataloader = ExactDataLoader(dataloader, accelerator.device,
+                                 config.training.seed or 0)
 
     # ---- Model ----
     logger.info("Creating model and diffusion...")
@@ -140,14 +164,9 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
         betas=(config.training.adam_beta1, config.training.adam_beta2),
     )
 
-    # ---- Accelerate: wrap model, optimizer, dataloader for distributed ----
-    # NOTE: lr_scheduler is NOT wrapped by accelerator. AcceleratedScheduler
-    # with split_batches=False steps num_processes times per call to compensate
-    # for data sharding, but num_training_steps already equals the target number
-    # of optimizer steps, so wrapping would advance the schedule num_gpus× too fast.
-    model, optimizer, dataloader = accelerator.prepare(
-        model, optimizer, dataloader,
-    )
+    # The exact loader owns its cursor; Accelerate wraps only compute state.
+    # Keep the LR scheduler on the existing optimizer-step horizon.
+    model, optimizer = accelerator.prepare(model, optimizer)
     trainer.model = model  # point trainer at the wrapped model
     trainer.initialize_ema(accelerator)
 
@@ -176,31 +195,26 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
         num_cycles=0.5,
     )
 
-    # ---- Resume from checkpoint (if requested) ----
-    if args.resume:
-        _resume_from_checkpoint(
-            args.resume, accelerator, model, optimizer, lr_scheduler,
-            trainer, tracker,
-        )
-        # The checkpoint holds no RNG state; reseeding with the resumed step
-        # keeps the flow-matching t, noise and caption-dropout draws from
-        # repeating the stream the run already used from step 0.
-        if config.training.seed is not None:
-            set_seed(config.training.seed + tracker.current_step, device_specific=True)
+    # Restore RNG last, after all constructors and checkpoint state loads.
+    if checkpoint is not None:
+        restore_checkpoint(checkpoint, accelerator, model, optimizer, lr_scheduler,
+                           trainer.ema_model, tracker, dataloader, identity)
+        del checkpoint
 
     if is_main:
         logger.info(f"Training for {tracker.get_duration_str()}")
 
     # ---- Initial visualization (skip if resuming) ----
-    if not args.resume:
+    if args.visualize and not args.resume:
         trainer.eval()
         if is_main:
-            trainer.visualize_samples(
-                save_dir=debug_dir,
-                prefix="initial_before_training",
-                num_samples=config.sampling.num_samples,
-                cfg_scale=config.sampling.cfg_scale,
-            )
+            with preserve_rng():
+                trainer.visualize_samples(
+                    save_dir=debug_dir,
+                    prefix="initial_before_training",
+                    num_samples=config.sampling.num_samples,
+                    cfg_scale=config.sampling.cfg_scale,
+                )
             torch.cuda.empty_cache()
 
     trainer.train()
@@ -213,12 +227,14 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
         disable=not is_main,
     )
     grad_norm = None
+    last_checkpoint_at = time.monotonic()
+    stop_requested = False
 
-    while not tracker.training_finished():
+    while not tracker.training_finished() and not stop_requested:
         pbar.set_description(tracker.get_progress_desc())
 
-        # Update sampler epoch so each epoch gets different random indices in DDP
-        _set_sampler_epoch(dataloader, tracker.current_epoch)
+        # A resumed epoch retains its saved order and next batch.
+        dataloader.set_epoch(tracker.current_epoch)
 
         for batch in dataloader:
             with accelerator.accumulate(model):
@@ -258,7 +274,7 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
 
                     optimizer.step()
                     lr_scheduler.step()
-                    optimizer.zero_grad()
+                    optimizer.zero_grad(set_to_none=True)
 
                     # EMA update
                     if trainer.use_ema and trainer.ema_model is not None:
@@ -284,27 +300,32 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
                         _log_metrics(writer, trainer, lr_scheduler, loss_dict,
                                      grad_norm, config, step)
 
-                    # Periodic checkpoint + visualization
-                    if step > 0 and (step % config.training.save_interval == 0
-                                     or tracker.training_finished()):
-                        # Sync all ranks before checkpoint so rank 1+ don't timeout
-                        # waiting during rank 0's lengthy ODE visualization.
-                        accelerator.wait_for_everyone()
-                        if is_main:
-                            _save_checkpoint_and_visualize(
-                                trainer, accelerator, model, optimizer, lr_scheduler,
-                                tracker, config, checkpoint_dir, debug_dir,
-                            )
-                        accelerator.wait_for_everyone()
+                    # Recovery checkpoints have a wall-clock cadence independent
+                    # of optional debug evaluation. Check only after useful work.
+                    final_epoch_batch = (epoch_budget and dataloader.end_of_dataloader
+                                         and tracker.current_epoch + 1 == tracker.max_epochs)
+                    milestone = (step % config.training.save_interval == 0
+                                 or tracker.training_finished() or final_epoch_batch)
+                    recovery_due = time.monotonic() - last_checkpoint_at >= RECOVERY_CHECKPOINT_SECONDS
+                    stop_requested = (args.stop_after_seconds is not None
+                                      and time.monotonic() - segment_started_at >= args.stop_after_seconds)
+                    if recovery_due or milestone or stop_requested:
+                        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_step_{step}.pt")
+                        save_checkpoint(checkpoint_path, accelerator, model, optimizer,
+                                        lr_scheduler, trainer.ema_model, tracker, dataloader, identity)
+                        last_checkpoint_at = time.monotonic()
+                        logger.info(f"Saved checkpoint to {checkpoint_path}")
+                    if args.visualize and milestone and not stop_requested:
+                        _visualize_samples(trainer, config, tracker, debug_dir)
 
             # Sync all GPUs after the very first step
             if tracker.current_step == 1:
                 accelerator.wait_for_everyone()
 
-            if tracker.training_finished():
+            if tracker.training_finished() or stop_requested:
                 break
 
-        if not tracker.training_finished():
+        if not tracker.training_finished() and not stop_requested:
             tracker.next_epoch()
 
     # ---- Cleanup ----
@@ -314,41 +335,13 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
 
     accelerator.wait_for_everyone()
     accelerator.end_training()
-    logger.info("Training completed.")
+    logger.info("Training segment stopped after checkpoint." if stop_requested
+                else "Training completed.")
 
 
 # ===================================================================
 # Helper functions
 # ===================================================================
-
-def _set_sampler_epoch(dataloader, epoch: int):
-    """Set the sampler's epoch so each epoch draws different indices (DDP-safe).
-
-    An Accelerate-prepared loader (``DataLoaderShard``) re-sets its sampler
-    to its own ``iteration`` counter at the start of every ``__iter__``; that
-    counter starts at 0 in a new process, so it must be set through the
-    loader's ``set_epoch`` or a resumed run replays the epoch order from 0.
-
-    A plain loader: walk the batch_sampler chain (Accelerate's
-    BatchSamplerShard stores the original as ``.batch_sampler``, whose
-    ``.sampler`` is the MixtureSampler or DistributedSampler).
-    """
-    if hasattr(dataloader, 'set_epoch'):
-        dataloader.set_epoch(epoch)
-        return
-    bs = getattr(dataloader, 'batch_sampler', None)
-    while bs is not None:
-        sampler = getattr(bs, 'sampler', None)
-        if sampler is not None and hasattr(sampler, 'set_epoch'):
-            sampler.set_epoch(epoch)
-            return
-        bs = getattr(bs, 'batch_sampler', None)
-
-    # Fallback: direct sampler attribute
-    sampler = getattr(dataloader, 'sampler', None)
-    if hasattr(sampler, 'set_epoch'):
-        sampler.set_epoch(epoch)
-
 
 def _log_metrics(writer, trainer, lr_scheduler, loss_dict, grad_norm,
                  config, step):
@@ -368,43 +361,18 @@ def _log_metrics(writer, trainer, lr_scheduler, loss_dict, grad_norm,
         writer.add_scalar("train/grad_norm", grad_norm, step)
 
 
-def _save_checkpoint_and_visualize(trainer, accelerator, model, optimizer,
-                                   lr_scheduler, tracker, config,
-                                   checkpoint_dir, debug_dir):
-    """Persist a checkpoint to disk, then render sample visualizations.
-
-    The checkpoint is written first and a visualization failure is only
-    logged, so a crash in the debug ODE solve or the renderer can neither
-    lose the checkpoint nor end the run.
-    """
-    checkpoint_dict = {
-        "model_state_dict": accelerator.get_state_dict(model),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "lr_scheduler_state_dict": lr_scheduler.state_dict(),
-        "step": tracker.current_step,
-        "epoch": tracker.current_epoch,
-    }
-    if trainer.use_ema and trainer.ema_model is not None:
-        checkpoint_dict["ema_state_dict"] = trainer.ema_model.state_dict()
-
-    checkpoint_path = os.path.join(
-        checkpoint_dir, f"checkpoint_step_{tracker.current_step}.pt"
-    )
-    accelerator.save(checkpoint_dict, checkpoint_path)
-    logger.info(f"Saved checkpoint to {checkpoint_path}")
-    del checkpoint_dict
-
+def _visualize_samples(trainer, config, tracker, debug_dir):
+    """Optional debug evaluation cannot advance the training RNG stream."""
     try:
-        trainer.visualize_samples(
-            save_dir=debug_dir,
-            prefix=f"step_{tracker.current_step}",
-            num_samples=config.sampling.num_samples,
-            cfg_scale=config.sampling.cfg_scale,
-        )
+        with preserve_rng():
+            trainer.visualize_samples(
+                save_dir=debug_dir,
+                prefix=f"step_{tracker.current_step}",
+                num_samples=config.sampling.num_samples,
+                cfg_scale=config.sampling.cfg_scale,
+            )
     except Exception:
-        logger.exception(
-            f"Sample visualization failed at step {tracker.current_step}; "
-            f"the checkpoint is saved and training continues.")
+        logger.exception(f"Visualization failed at step {tracker.current_step}; checkpoint saved")
     torch.cuda.empty_cache()
 
 
@@ -414,25 +382,6 @@ def _resumed_run_dir(resume_path):
     ckpt_dir = os.path.dirname(os.path.abspath(resume_path))
     return (os.path.dirname(ckpt_dir)
             if os.path.basename(ckpt_dir) == "checkpoints" else ckpt_dir)
-
-
-def _pin_resumed_max_depth(args, config):
-    """With ``--resume`` and an auto ``dataset.max_depth`` (0), cap it at the
-    resumed run's saved value, so the depth embedding keeps the checkpoint's
-    shape even if the auto value computed from the data has grown since.
-    A config that sets ``max_depth`` wins."""
-    if not args.resume or config.dataset.max_depth > 0:
-        return
-    run_config = os.path.join(_resumed_run_dir(args.resume), "config.json")
-    if not os.path.isfile(run_config):
-        logger.warning(f"No config.json at {run_config}; max_depth is recomputed "
-                       f"from the data and must match the checkpoint's")
-        return
-    with open(run_config) as f:
-        saved = json.load(f).get("dataset", {}).get("max_depth", 0)
-    if saved > 0:
-        config.dataset.max_depth = saved
-        logger.info(f"Resuming: dataset.max_depth capped at the run's saved {saved}")
 
 
 def _resolve_train_stats_path(args):
@@ -452,60 +401,9 @@ def _resolve_train_stats_path(args):
         candidate = os.path.join(_resumed_run_dir(args.resume), "dataset_stats.npy")
         if os.path.isfile(candidate):
             return candidate
-        logger.warning(
-            f"No dataset_stats.npy at {candidate}; recomputing stats from the "
-            f"current data, which only matches the checkpoint if the data and "
-            f"the stats settings are unchanged. Pass --stats_path to pin them."
-        )
+        raise FileNotFoundError(f"Exact resume requires saved stats: {candidate}")
     return None
 
-
-def _resume_from_checkpoint(
-    resume_path, accelerator, model, optimizer, lr_scheduler, trainer, tracker,
-):
-    """Restore all training state from a checkpoint file.
-
-    Loads model weights, optimizer, lr_scheduler, EMA, and fast-forwards the
-    tracker to the saved step/epoch so training continues seamlessly.
-    """
-    logger.info(f"Resuming from checkpoint: {resume_path}")
-    checkpoint = torch.load(resume_path, map_location="cpu")
-
-    # Model weights
-    unwrapped = accelerator.unwrap_model(model)
-    unwrapped.load_state_dict(checkpoint["model_state_dict"])
-
-    # Optimizer
-    if "optimizer_state_dict" in checkpoint:
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-    # LR scheduler
-    if "lr_scheduler_state_dict" in checkpoint:
-        lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
-    else:
-        # Older checkpoint without scheduler state — fast-forward manually
-        for _ in range(checkpoint.get("step", 0)):
-            lr_scheduler.step()
-
-    # EMA
-    if trainer.use_ema and trainer.ema_model is not None:
-        if "ema_state_dict" in checkpoint:
-            trainer.ema_model.load_state_dict(checkpoint["ema_state_dict"])
-            trainer.ema_model.to(accelerator.device)
-            logger.info("Restored EMA state from checkpoint.")
-        else:
-            # No EMA state in checkpoint — rebuild EMA from the just-loaded
-            # model weights so it doesn't lag behind with the pre-resume random init.
-            trainer.initialize_ema(accelerator)
-            logger.warning("No EMA state in checkpoint — EMA re-initialized from loaded model weights.")
-
-    # Tracker
-    resumed_step = checkpoint.get("step", 0)
-    resumed_epoch = checkpoint.get("epoch", 0)
-    tracker.current_step = resumed_step
-    tracker.current_epoch = resumed_epoch
-
-    logger.info(f"Resumed at step={resumed_step}, epoch={resumed_epoch}")
 
 
 # ===================================================================

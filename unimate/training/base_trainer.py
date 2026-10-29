@@ -1,8 +1,7 @@
 """Base trainer class providing a loss interface.
 
 Subclasses must implement :meth:`compute_loss`.  Checkpoint I/O is handled
-directly via ``accelerator.save`` in the training loop for distributed
-compatibility.
+by the training loop's exact optimizer-boundary checkpoint helpers.
 """
 
 from abc import ABC, abstractmethod

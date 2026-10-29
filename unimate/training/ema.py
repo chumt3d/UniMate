@@ -93,6 +93,7 @@ class EMAModel:
         _check_pairing(self.collected_params, parameters)
         for c_param, param in zip(self.collected_params, parameters):
             param.data.copy_(c_param.data)
+        del self.collected_params
 
     # ------------------------------------------------------------------
     # Serialization
@@ -106,6 +107,7 @@ class EMAModel:
             "update_after_step": self.update_after_step,
             "use_ema_warmup": self.use_ema_warmup,
             "shadow_params": self.shadow_params,
+            "cur_decay_value": self.cur_decay_value,
         }
 
     def load_state_dict(self, state_dict: dict) -> None:
@@ -115,6 +117,7 @@ class EMAModel:
         self.update_after_step = state_dict["update_after_step"]
         self.use_ema_warmup = state_dict.get("use_ema_warmup", False)
         self.shadow_params = state_dict["shadow_params"]
+        self.cur_decay_value = state_dict["cur_decay_value"]
 
     def to(self, device=None, dtype=None) -> None:
         """Move shadow params to the given device / dtype."""
