@@ -35,6 +35,7 @@ def worker(args):
     from unimate.training.exact_resume import (
         ExactDataLoader, capture_rng, preserve_rng, read_checkpoint,
         restore_checkpoint, save_checkpoint, input_identity, training_identity,
+        runtime_identity, file_sha256,
     )
     from unimate.training.tracker import TrainingTracker
 
@@ -73,7 +74,9 @@ def worker(args):
     tracker = TrainingTracker(max_epochs=2, steps_per_epoch=3)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=6)
     identity = {"synthetic": "10-clips/2-batch/2-accum/2-epochs-v1", "mode": args.mode,
-                "runtime": [torch.__version__, accelerate.__version__, np.__version__]}
+                "runtime": runtime_identity(),
+                **{key:"synthetic-"+key for key in ("config","source","data","resolved_config",
+                   "splits","stats","encoder_outputs","execution")}}
     args.out.mkdir(parents=True, exist_ok=True)
     if args.resume:
         restore_checkpoint(read_checkpoint(args.resume), accelerator, model, optimizer,
@@ -249,6 +252,102 @@ def worker(args):
         fourth = training_identity(original, config, SimpleNamespace(motion_dataset=md), stats)
         assert third["stats"] != fourth["stats"]
     rejections.append("actual-config-data-split-stats-encoder-binding")
+
+    # Actual production restore/save with real CPU model/Adam/EMA/sampler/RNG.
+    # ONLY the unavailable CUDA generator I/O/device-count API is simulated;
+    # this proves admission and byte-state transfer, not cross-GPU arithmetic.
+    from unittest.mock import patch
+    parent = read_checkpoint(args.out / 'checkpoint_step_1.pt')
+    parent['identity'] = copy.deepcopy(identity)
+    parent['identity']['runtime']['cuda_devices'] = ['NVIDIA L40S']
+    parent['rng']['cuda'] = [torch.arange(16, dtype=torch.uint8)]
+    parent_path = args.out / 'simulated-cuda-parent.pt'
+    torch.save(parent, parent_path)
+    parent, parent_sha = read_checkpoint(parent_path, return_sha256=True)
+    target = copy.deepcopy(parent['identity'])
+    target['runtime']['cuda_devices'] = ['NVIDIA H100 80GB HBM3']
+    admission = {'owner':'/root', 'parent_checkpoint_sha256':parent_sha,
+        'parent_step':parent['step'], 'from_cuda_devices':['NVIDIA L40S'],
+        'to_cuda_devices':['NVIDIA H100 80GB HBM3'], 'operation_id':'productive-h100',
+        'runtime_sha256':'b'*64, 'acknowledged_numeric_divergence':True}
+    context = {'parent_checkpoint_sha256':parent_sha, 'operation_id':'productive-h100',
+               'runtime_sha256':'b'*64}
+    def portable_restore(bound=target, allowed=admission, candidate=parent, **changes):
+        fresh = TrainingTracker(max_epochs=2, steps_per_epoch=3)
+        returned = restore_checkpoint(candidate, accelerator, model, optimizer, scheduler,
+            ema, fresh, loader, bound, transition=allowed, **dict(context, **changes))
+        return fresh, returned
+
+    rejected('different-GPU-without-admission',lambda:portable_restore(allowed=None))
+    wrong = {'owner':'other', 'parent_checkpoint_sha256':'a'*64, 'parent_step':2,
+        'from_cuda_devices':['NVIDIA L4'], 'to_cuda_devices':['NVIDIA L4'],
+        'operation_id':'wrong-operation', 'runtime_sha256':'c'*64,
+        'acknowledged_numeric_divergence':False}
+    for key,value in wrong.items():
+        rejected('transition-'+key,lambda key=key,value=value:portable_restore(allowed=dict(admission,**{key:value})))
+    for key in admission:
+        changed=dict(admission);del changed[key]
+        rejected('transition-missing-'+key,lambda changed=changed:portable_restore(allowed=changed))
+    rejected('transition-extra-key',lambda:portable_restore(allowed=dict(admission,extra=True)))
+    rejected('transition-context-runtime',lambda:portable_restore(runtime_sha256='c'*64))
+    rejected('transition-context-operation',lambda:portable_restore(operation_id='wrong'))
+    rejected('transition-context-parent',lambda:portable_restore(parent_checkpoint_sha256='a'*64))
+    for key in target:
+        if key == 'runtime': continue
+        changed=copy.deepcopy(target);changed[key]='changed'
+        rejected('transition-identity-'+key,lambda changed=changed:portable_restore(bound=changed))
+    for key in target['runtime']:
+        if key == 'cuda_devices': continue
+        changed=copy.deepcopy(target);changed['runtime'][key]='changed'
+        rejected('transition-runtime-'+key,lambda changed=changed:portable_restore(bound=changed))
+    for level in (None,'runtime'):
+        for kind in ('missing','extra'):
+            changed=copy.deepcopy(target);node=changed if level is None else changed[level]
+            if kind=='missing':del node[next(iter(node))]
+            else:node['extra']='forbidden'
+            rejected('transition-schema-'+str(level)+'-'+kind,lambda changed=changed:portable_restore(bound=changed))
+    changed=copy.deepcopy(target);changed['runtime']['cuda_devices']*=2
+    rejected('transition-two-target-devices',lambda:portable_restore(bound=changed))
+    changed=copy.deepcopy(parent);changed['rng']['cuda']*=2
+    rejected('transition-two-saved-generators',lambda:portable_restore(candidate=changed))
+    rejected('transition-no-actual-CUDA-device',lambda:portable_restore())
+
+    def equal_state(a,b):
+        if torch.is_tensor(a):return torch.equal(a,b)
+        if isinstance(a,np.ndarray):return np.array_equal(a,b)
+        if isinstance(a,dict):return set(a)==set(b) and all(equal_state(a[k],b[k]) for k in a)
+        if isinstance(a,(list,tuple)):return type(a)==type(b) and len(a)==len(b) and all(equal_state(x,y) for x,y in zip(a,b))
+        return a==b
+    cuda_bytes=[torch.zeros_like(parent['rng']['cuda'][0])]
+    def set_cuda(values):cuda_bytes[:]=[value.clone() for value in values]
+    with patch.object(torch.cuda,'device_count',return_value=1),\
+         patch.object(torch.cuda,'is_available',return_value=True),\
+         patch.object(torch.cuda,'get_rng_state_all',side_effect=lambda:[value.clone() for value in cuda_bytes]),\
+         patch.object(torch.cuda,'set_rng_state_all',side_effect=set_cuda):
+        for parameter in model.parameters():parameter.data.fill_(123)
+        random.random();np.random.rand();torch.rand(3)
+        fresh,returned=portable_restore()
+        assert returned==admission
+        assert equal_state(accelerator.get_state_dict(model),parent['model_state_dict'])
+        assert equal_state(optimizer.state_dict(),parent['optimizer_state_dict'])
+        assert equal_state(scheduler.state_dict(),parent['lr_scheduler_state_dict'])
+        assert equal_state(ema.state_dict(),parent['ema_state_dict'])
+        assert equal_state(vars(fresh),parent['tracker'])
+        assert equal_state(loader.resume_sampler.state_dict(),parent['sampler'])
+        assert accelerator.step==parent['accelerator_step']
+        assert equal_state(capture_rng(),parent['rng'])
+        child_path=args.out/'simulated-cuda-child.pt'
+        save_checkpoint(child_path,accelerator,model,optimizer,scheduler,ema,fresh,loader,target)
+        child=read_checkpoint(child_path)
+        assert child['identity']==target
+        assert all(equal_state(child[key],parent[key]) for key in parent if key!='identity')
+        assert file_sha256(parent_path)==parent_sha
+    (args.out/'device-transition-proof.json').write_text(json.dumps({
+        'actual_restore_save_boundary':True,'CUDA_generator_IO_simulated':True,
+        'real_GPU_execution':False,'all_CPU_state_sampler_nextbatch_and_all_RNG_equal':True,
+        'parent_immutable':True,'child_actual_target_identity':True,
+        'rejected_cases':len(rejections)},indent=2))
+    parent_path.unlink();child_path.unlink()
     (args.out / "rejections.json").write_text(json.dumps(rejections, indent=2))
 
 
@@ -294,4 +393,5 @@ if __name__ == "__main__":
     parser.add_argument("--resume")
     parser.add_argument("--stop", type=int)
     arguments = parser.parse_args()
+    arguments.out = arguments.out.resolve()
     worker(arguments) if arguments.worker else coordinator(arguments)

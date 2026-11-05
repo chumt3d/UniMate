@@ -9,6 +9,7 @@ CLI overrides (via tyro): ``--output_dir``, ``--batch_size``, ``--num_workers``,
 """
 
 import math
+import json
 import os
 import time
 import warnings
@@ -31,6 +32,7 @@ from unimate.training.tracker import TrainingTracker
 from unimate.training.exact_resume import (
     ExactDataLoader, input_identity, training_identity, preserve_rng,
     read_checkpoint, restore_checkpoint, save_checkpoint,
+    validate_resume_identity, _atomic_write,
 )
 from unimate.utils.logger import get_logger
 
@@ -60,6 +62,9 @@ class TrainingArgs:
     visualize: bool = False  # opt in to expensive debug sampling/rendering
     stop_after_seconds: Optional[float] = None  # checkpointed invocation allowance
     stop_after_updates: Optional[int] = None  # completed updates in this invocation
+    device_transition: Optional[str] = None  # explicit parent/device/operation admission JSON
+    operation_id: Optional[str] = None
+    runtime_sha256: Optional[str] = None
 
 
 # ===================================================================
@@ -84,7 +89,16 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
                    else config.training.num_workers)
     if accelerator.num_processes != 1 or num_workers != 0:
         raise ValueError("Exact training checkpoints require one process and num_workers=0")
-    checkpoint = read_checkpoint(args.resume) if args.resume else None
+    checkpoint, parent_sha256 = (read_checkpoint(args.resume, return_sha256=True)
+                                 if args.resume else (None, None))
+    transition = None
+    if args.device_transition is not None:
+        if checkpoint is None:
+            raise ValueError("Device transition requires a native parent checkpoint")
+        with open(args.device_transition) as stream:
+            transition = json.load(stream)
+    transition_context = dict(transition=transition, parent_checkpoint_sha256=parent_sha256,
+                              operation_id=args.operation_id, runtime_sha256=args.runtime_sha256)
 
     # ---- Output directories ----
     output_dir = args.output_dir or config.experiment.output_dir
@@ -117,9 +131,13 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
                            "mixed_precision": accelerator.mixed_precision,
                            "accumulation": accelerator.gradient_accumulation_steps}
     if checkpoint is not None:
-        for key, value in inputs.items():
-            if checkpoint["identity"].get(key) != value:
-                raise ValueError(f"Resume input identity mismatch: {key}")
+        # The later resolved fields are checked after dataset construction. All
+        # remaining keys, including every runtime field, must already match.
+        resolved_keys = {"resolved_config", "splits", "stats", "encoder_outputs"}
+        saved_inputs = {key: value for key, value in checkpoint["identity"].items()
+                        if key not in resolved_keys}
+        validate_resume_identity(saved_inputs, inputs, parent_step=checkpoint["step"],
+                                 **transition_context)
     stats_src = _resolve_train_stats_path(args)
     dataloader = create_train_dataloader(
         dataset_config=config.dataset,
@@ -137,8 +155,9 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
     if checkpoint is None:
         dataloader.dataset.save_dataset_stats(stats_path)
     identity = training_identity(inputs, config, dataloader.dataset, identity_stats)
-    if checkpoint is not None and checkpoint["identity"] != identity:
-        raise ValueError("Resume resolved config, split, stats or encoder identity mismatch")
+    if checkpoint is not None:
+        validate_resume_identity(checkpoint["identity"], identity, parent_step=checkpoint["step"],
+                                 **transition_context)
     config.to_json(os.path.join(output_dir, "config.json"))
     if checkpoint is not None and os.path.abspath(stats_src) != os.path.abspath(stats_path):
         # Preserve the exact bytes whose identity was checked (no recomputation).
@@ -203,8 +222,17 @@ def train_diffusion(args: TrainingArgs, config: MainConfig,
 
     # Restore RNG last, after all constructors and checkpoint state loads.
     if checkpoint is not None:
-        restore_checkpoint(checkpoint, accelerator, model, optimizer, lr_scheduler,
-                           trainer.ema_model, tracker, dataloader, identity)
+        admitted = restore_checkpoint(checkpoint, accelerator, model, optimizer, lr_scheduler,
+                           trainer.ema_model, tracker, dataloader, identity, **transition_context)
+        if admitted is not None:
+            receipt_path = os.path.join(checkpoint_dir, f"transition-{args.operation_id}.json")
+            if os.path.exists(receipt_path):
+                raise FileExistsError("Transition restore receipt is immutable")
+            receipt = {**admitted, "restored_step": tracker.current_step,
+                       "next_batch": dataloader.resume_sampler.state_dict()["next_batch"],
+                       "all_state_loaded_rng_restored_last": True,
+                       "new_checkpoint_publication": None}
+            _atomic_write(receipt_path, lambda stream: stream.write(json.dumps(receipt, sort_keys=True).encode()))
         del checkpoint
 
     if is_main:

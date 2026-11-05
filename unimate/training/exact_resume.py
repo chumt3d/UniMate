@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import random
+import re
 import tempfile
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -199,7 +200,13 @@ def input_identity(config):
     return {
         "config": _json_hash(config_dict), "source": _json_hash(source),
         "data": _json_hash(data),
-        "runtime": {"python": platform.python_version(), "torch": torch.__version__,
+        "runtime": runtime_identity(),
+    }
+
+
+def runtime_identity():
+    """Numerical policy/software bind strictly; device hardware is separately admitted."""
+    return {"python": platform.python_version(), "torch": torch.__version__,
                     "numpy": np.__version__, "accelerate": accelerate.__version__,
                     "cuda": torch.version.cuda,
                     "cudnn": torch.backends.cudnn.version(),
@@ -208,9 +215,15 @@ def input_identity(config):
                     "cudnn_deterministic": torch.backends.cudnn.deterministic,
                     "cudnn_benchmark": torch.backends.cudnn.benchmark,
                     "matmul_precision": torch.get_float32_matmul_precision(),
+                    "matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+                    "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+                    "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
+                    "sdpa_flash": torch.backends.cuda.flash_sdp_enabled(),
+                    "sdpa_mem_efficient": torch.backends.cuda.mem_efficient_sdp_enabled(),
+                    "sdpa_math": torch.backends.cuda.math_sdp_enabled(),
+                    "sdpa_cudnn": torch.backends.cuda.cudnn_sdp_enabled(),
                     "cuda_devices": [torch.cuda.get_device_name(i)
-                                     for i in range(torch.cuda.device_count())]},
-    }
+                                     for i in range(torch.cuda.device_count())]}
 
 
 def _embedding_hash(value, digest):
@@ -287,16 +300,18 @@ def save_checkpoint(path, accelerator, model, optimizer, scheduler, ema, tracker
                   lambda stream: stream.write(json.dumps(receipt, sort_keys=True).encode()))
 
 
-def read_checkpoint(path):
+def read_checkpoint(path, *, return_sha256=False):
     path = Path(path)
+    actual_sha256 = None
     if path.suffix == ".json":
         receipt = json.loads(path.read_text())
         filename = receipt["checkpoint"]
         if Path(filename).name != filename:
             raise ValueError("Invalid checkpoint receipt path")
         path = path.parent / filename
+        actual_sha256 = file_sha256(path)
         if (receipt["format"] != FORMAT or path.stat().st_size != receipt["bytes"]
-                or file_sha256(path) != receipt["sha256"]):
+                or actual_sha256 != receipt["sha256"]):
             raise ValueError("Checkpoint receipt does not match the durable file")
     # Training checkpoints contain Python and NumPy RNG objects. Only load
     # trusted run artifacts; PyTorch's tensor-only loader cannot read these.
@@ -306,14 +321,69 @@ def read_checkpoint(path):
                 "tracker", "sampler", "accelerator_step", "rng", "step", "epoch"}
     if set(checkpoint) != required or checkpoint["format"] != FORMAT:
         raise ValueError("Incomplete or unsupported exact-resume checkpoint")
+    if return_sha256:
+        return checkpoint, actual_sha256 or file_sha256(path)
     return checkpoint
 
 
+def validate_resume_identity(saved, current, *, transition=None,
+                             parent_checkpoint_sha256=None, parent_step=None,
+                             operation_id=None, runtime_sha256=None):
+    """Strict by default; an explicit admission permits only one GPU-name leaf.
+
+    CUDA seed/Philox offset state is preserved. PyTorch 2.5.1 random-kernel
+    launch geometry depends on SM count, so later cross-GPU draws and arithmetic
+    are not promised bitwise equal (DistributionTemplates.h:calc_execution_policy).
+    """
+    if transition is None:
+        if _json_hash(saved) != _json_hash(current):
+            raise ValueError("Resume identity mismatch (including missing/extra fields)")
+        return None
+    required = {"owner", "parent_checkpoint_sha256", "parent_step", "from_cuda_devices",
+                "to_cuda_devices", "operation_id", "runtime_sha256",
+                "acknowledged_numeric_divergence"}
+    if set(transition) != required:
+        raise ValueError("Incomplete or extra device-transition admission fields")
+    if (set(saved) != set(current) or not isinstance(saved.get("runtime"), dict)
+            or not isinstance(current.get("runtime"), dict)
+            or set(saved["runtime"]) != set(current["runtime"])):
+        raise ValueError("Resume identity schema differs")
+    for key in saved:
+        if key != "runtime" and _json_hash(saved[key]) != _json_hash(current[key]):
+            raise ValueError(f"Resume identity mismatch: {key}")
+    for key in saved["runtime"]:
+        if key != "cuda_devices" and _json_hash(saved["runtime"][key]) != _json_hash(current["runtime"][key]):
+            raise ValueError(f"Resume runtime mismatch: {key}")
+    source, target = saved["runtime"].get("cuda_devices"), current["runtime"].get("cuda_devices")
+    if (not isinstance(source, list) or not isinstance(target, list)
+            or len(source) != 1 or len(target) != 1 or source == target
+            or not all(isinstance(name, str) and name for name in source + target)):
+        raise ValueError("Device transition requires two different single-CUDA-device lists")
+    if (transition["owner"] != "/root"
+            or transition["parent_checkpoint_sha256"] != parent_checkpoint_sha256
+            or not isinstance(parent_checkpoint_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", parent_checkpoint_sha256) is None
+            or type(parent_step) is not int or parent_step < 0
+            or type(transition["parent_step"]) is not int or transition["parent_step"] != parent_step
+            or transition["from_cuda_devices"] != source or transition["to_cuda_devices"] != target
+            or not isinstance(operation_id, str) or re.fullmatch(r"[A-Za-z0-9_-]+", operation_id) is None
+            or transition["operation_id"] != operation_id
+            or not isinstance(runtime_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", runtime_sha256) is None
+            or transition["runtime_sha256"] != runtime_sha256
+            or transition["acknowledged_numeric_divergence"] is not True):
+        raise ValueError("Device transition does not bind this parent/device pair/operation/runtime")
+    return dict(transition)
+
+
 def restore_checkpoint(checkpoint, accelerator, model, optimizer, scheduler, ema,
-                       tracker, dataloader, identity):
-    if checkpoint["identity"] != identity:
-        changed = sorted(k for k in identity if checkpoint["identity"].get(k) != identity[k])
-        raise ValueError(f"Resume identity mismatch: {changed}")
+                       tracker, dataloader, identity, *, transition=None,
+                       parent_checkpoint_sha256=None, operation_id=None, runtime_sha256=None):
+    admitted = validate_resume_identity(checkpoint["identity"], identity,
+        transition=transition, parent_checkpoint_sha256=parent_checkpoint_sha256,
+        parent_step=checkpoint["step"], operation_id=operation_id, runtime_sha256=runtime_sha256)
+    if admitted is not None and (len(checkpoint["rng"]["cuda"]) != 1
+                                or torch.cuda.device_count() != 1):
+        raise ValueError("Device transition requires one saved and one actual CUDA generator")
     if (ema is None) != (checkpoint["ema_state_dict"] is None):
         raise ValueError("Checkpoint EMA presence does not match run")
     if (accelerator.scaler is None) != (checkpoint["scaler_state_dict"] is None):
@@ -352,3 +422,4 @@ def restore_checkpoint(checkpoint, accelerator, model, optimizer, scheduler, ema
     accelerator.step = checkpoint["accelerator_step"]
     # Last operation: initialization and state loading may have consumed RNG.
     restore_rng(checkpoint["rng"])
+    return admitted
